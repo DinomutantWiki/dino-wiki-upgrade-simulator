@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dino mutant 強化コスト計算ツール</title>
+<style>
+:root{color-scheme:light;--bg:#f5f7fa;--panel:#fff;--line:#d9e0e8;--text:#202833;--muted:#647184;--accent:#3567b7;--red:#a51d19;--redbg:#fff0ef;--green:#17663a;--greenbg:#eaf7ee}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}
+main{max-width:1100px;margin:0 auto;padding:20px}h1{font-size:1.55rem;margin:0 0 6px}h2{font-size:1.12rem;margin:0 0 12px}.note{color:var(--muted);font-size:.9rem;margin:0 0 18px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;box-shadow:0 2px 8px #18263a0a}
+.tabs{display:flex;gap:8px;margin:16px 0 0}.tab{flex:1;background:#e8edf4;color:#253247;border:1px solid var(--line)}.tab[aria-selected="true"]{background:var(--accent);color:white;border-color:var(--accent)}
+.controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.field label{display:block;font-weight:700;font-size:.9rem;margin-bottom:5px}.field input,.field select{width:100%;padding:9px;border:1px solid #bfc9d6;border-radius:7px;font:inherit;background:#fff;color:inherit}
+.inventory{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.inv{border:1px solid var(--line);border-radius:9px;padding:10px}.inv label{display:block;font-weight:700;font-size:.9rem;margin-bottom:4px}.inv input{width:100%;padding:8px;border:1px solid #bfc9d6;border-radius:6px;font:inherit}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}button{border:0;border-radius:8px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer;background:var(--accent);color:#fff}button.secondary{background:#e8edf4;color:#253247}button:hover{filter:brightness(.96)}
+.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:700px;font-size:.92rem}th,td{border:1px solid var(--line);padding:9px;text-align:right;white-space:nowrap}th{background:#eef2f7}th:first-child,td:first-child{text-align:left}
+.shortage-cell{color:var(--red);background:var(--redbg);font-weight:800}.enough-cell{color:var(--green);background:var(--greenbg);font-weight:800}.status-word{display:inline-block;margin-left:5px;padding:1px 6px;border-radius:5px;font-size:.78rem;font-weight:750}.status-word.short{background:#fbd8d5;color:#8f1d15}.status-word.enough{background:#d4f0dc;color:#14532d}.remaining-cell{font-weight:800}.remaining-cell.zero{color:var(--muted)}.sub{color:var(--muted);font-size:.85rem}.warning{padding:10px;border-radius:8px;background:#fff8e6;border:1px solid #f0d89b;color:#6e4c00;font-size:.9rem}.hidden{display:none!important}
+@media(max-width:700px){main{padding:12px}.controls{grid-template-columns:1fr 1fr}.inventory{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:12px}h1{font-size:1.3rem}}
+@media(max-width:420px){.controls{grid-template-columns:1fr}.tabs button{padding:10px 6px}}
+</style>
+</head>
+<body>
+<main>
+<h1>Dino mutant 強化コスト計算ツール</h1>
+<p class="note">巣・インキュベーターの強化に必要な素材数、不足数、強化後の残り素材を計算する。</p>
+<div class="tabs" role="tablist" aria-label="計算対象">
+<button class="tab" id="tabNest" role="tab" aria-selected="true" aria-controls="nestPanel">巣</button>
+<button class="tab" id="tabIncubator" role="tab" aria-selected="false" aria-controls="incubatorPanel">インキュベーター</button>
+</div>
+
+<section id="nestPanel" role="tabpanel" aria-labelledby="tabNest">
+<div class="panel">
+<h2>強化条件</h2>
+<div class="controls">
+<div class="field"><label for="nestCurrent">現在のレベル</label><select id="nestCurrent"></select></div>
+<div class="field"><label for="nestTarget">目標のレベル</label><select id="nestTarget"></select></div>
+<div class="field"><label for="nestCount">巣の個数</label><input id="nestCount" type="number" min="1" max="100" step="1" value="1"></div>
+</div>
+<div class="actions"><button id="nestCalc">計算する</button><button class="secondary" id="nestReset">リセット</button></div>
+</div>
+<div class="panel"><h2>所持素材（未入力は0として計算）</h2><div id="nestInventory" class="inventory"></div></div>
+<div class="panel" id="nestResults" hidden>
+<h2>計算結果</h2><p id="nestSummary"></p><div id="nestWarnings"></div>
+<div class="table-wrap"><table id="nestTable"><thead><tr><th>素材</th><th>合計必要数</th><th>所持数</th><th>不足数</th><th>強化後の残り</th></tr></thead><tbody></tbody></table></div>
+<p class="sub">強化後の残りは、所持数で必要数をまかなえる場合のみ表示。不足がある素材は「—」になる。</p>
+<div class="actions"><button id="nestCopyText">結果をテキストでコピー</button><button id="nestCopyWiki">Wiki用テーブルをコピー</button></div><p id="nestCopyStatus" class="sub" aria-live="polite"></p>
+</div>
+</section>
+
+<section id="incubatorPanel" role="tabpanel" aria-labelledby="tabIncubator" class="hidden">
+<div class="panel">
+<h2>強化条件</h2>
+<div class="controls">
+<div class="field"><label for="incCurrent">現在のレベル</label><select id="incCurrent"></select></div>
+<div class="field"><label for="incTarget">目標のレベル</label><select id="incTarget"></select></div>
+<div class="field"><label for="incCount">インキュベーターの個数</label><input id="incCount" type="number" min="1" max="100" step="1" value="1"></div>
+</div>
+<div class="actions"><button id="incCalc">計算する</button><button class="secondary" id="incReset">リセット</button></div>
+</div>
+<div class="panel"><h2>所持素材（未入力は0として計算）</h2><div id="incInventory" class="inventory"></div></div>
+<div class="panel" id="incResults" hidden>
+<h2>計算結果</h2><p id="incSummary"></p><div id="incWarnings"></div>
+<div class="table-wrap"><table id="incTable"><thead><tr><th>素材</th><th>合計必要数</th><th>所持数</th><th>不足数</th><th>強化後の残り</th></tr></thead><tbody></tbody></table></div>
+<p class="sub">強化後の残りは、所持数で必要数をまかなえる場合のみ表示。不足がある素材は「—」になる。</p>
+<div class="actions"><button id="incCopyText">結果をテキストでコピー</button><button id="incCopyWiki">Wiki用テーブルをコピー</button></div><p id="incCopyStatus" class="sub" aria-live="polite"></p>
+</div>
+<div class="panel"><h2>インキュベーターの性能</h2><p class="sub">レベルごとのベース人口・最大巣・孵化ブースト・狩猟パーティ規模。コスト計算とは別に、参考情報として表示。</p>
+<div class="table-wrap"><table><thead><tr><th>レベル</th><th>ベース人口</th><th>最大巣</th><th>孵化ブースト</th><th>狩猟パーティ規模</th></tr></thead><tbody id="incStats"></tbody></table></div></div>
+</section>
+
+<section class="panel">
+<h2>データとプライバシー</h2>
+<p class="warning">巣はLv13、インキュベーターはLv14まで対応。インキュベーターのLv6・Lv9は必要素材が未確認のため、該当レベルを含む計算は既知の素材分のみの小計となり、警告を表示する。</p>
+<p class="sub">入力したレベル・所持素材などの設定は、このブラウザ内に保存される。入力内容がサーバーへ転送・送信されることはない。ブラウザのデータを削除すると、保存された設定も消える場合がある。</p>
+</section>
+</main>
+<script>
+const MATERIALS=[
+ {key:"straw",name:"藁"},{key:"hide",name:"皮"},{key:"claw",name:"爪"},{key:"crystal",name:"結晶"},{key:"metal",name:"金属"},{key:"soul",name:"ソウル"},{key:"bone",name:"骨"},
+ {key:"boss1",name:"ボス皮Ⅰ"},{key:"boss2",name:"ボス皮Ⅱ"},{key:"boss3",name:"ボス皮Ⅲ"},{key:"boss4",name:"ボス皮Ⅳ"}
+];
+const NEST_MATERIALS=MATERIALS.slice(0,7);
+const INC_MATERIALS=MATERIALS;
+const NEST_COSTS={
+ 2:{straw:100,hide:100,claw:50},3:{straw:500,hide:500,claw:250},
+ 4:{straw:1200,hide:1200,claw:600,crystal:150},5:{straw:2900,hide:2900,claw:1450,crystal:363},
+ 6:{straw:4000,hide:4000,claw:2000,crystal:500},7:{straw:5000,hide:5000,claw:2500,crystal:625,metal:600,soul:15,bone:150000},
+ 8:{straw:11000,hide:11000,claw:5500,crystal:1375,metal:1400,soul:30,bone:300000},
+ 9:{straw:17600,hide:17600,claw:8800,crystal:2200,metal:2200,soul:50,bone:500000},
+ 10:{straw:48000,hide:48000,claw:24000,crystal:6000,metal:6000,soul:100,bone:1000000},
+ 11:{straw:62000,hide:62000,claw:31000,crystal:7750,metal:7800,soul:140,bone:1200000},
+ 12:{straw:76000,hide:76000,claw:38000,crystal:9500,metal:9500,soul:180,bone:1400000},
+ 13:{straw:95000,hide:95000,claw:47500,crystal:11875,metal:12000,soul:225,bone:2000000}
+};
+const INC_COSTS={
+ 2:{straw:180,hide:180,claw:90,boss1:1},
+ 3:{straw:360,hide:360,claw:180,boss2:1},
+ 4:{straw:960,hide:960,claw:480,crystal:240,boss3:1},
+ 5:{straw:1800,hide:1800,claw:900,crystal:450,boss4:1},
+ 6:null,
+ 7:{straw:4800,hide:4800,claw:2400,crystal:1200,metal:600,soul:10,bone:100000},
+ 8:{straw:9600,hide:9600,claw:4800,crystal:2400,metal:1200,soul:20,bone:300000},
+ 9:null,
+ 10:{straw:38400,hide:38400,claw:19200,crystal:9600,metal:4800,soul:60,bone:3000000},
+ 11:{straw:48000,hide:48000,claw:24000,crystal:12000,metal:6000,soul:80,bone:7000000},
+ 12:{straw:57600,hide:57600,claw:28800,crystal:14400,metal:7200,soul:100,bone:9000000},
+ 13:{straw:67200,hide:67200,claw:33600,crystal:16800,metal:8400,soul:150,bone:15000000},
+ 14:{straw:76800,hide:76800,claw:38400,crystal:19200,metal:9600,soul:300,bone:30000000}
+};
+const INC_STATS=[
+ [1,55,9,"+0%",3],[2,90,15,"+2%",4],[3,125,15,"+4%",5],[4,160,18,"+6%",7],[5,195,21,"+8%",9],
+ [6,230,24,"+10%",11],[7,230,24,"+12%",11],[8,230,24,"+14%",11],[9,230,24,"+16%",11],[10,230,24,"+18%",11],
+ [11,230,24,"+22%",11],[12,230,24,"+24%",11],[13,230,24,"+26%",11],[14,230,24,"+30%",11]
+];
+const $=id=>document.getElementById(id),fmt=n=>Number(n).toLocaleString("ja-JP");
+function setupLevels(prefix,max){for(let lv=1;lv<=max;lv++){$(prefix+"Current").add(new Option("Lv"+lv,lv));$(prefix+"Target").add(new Option("Lv"+lv,lv))}$ (prefix+"Current").value="1";$(prefix+"Target").value=String(max)}
+setupLevels("nest",13);setupLevels("inc",14);
+function setupInventory(prefix,mats){$(prefix+"Inventory").innerHTML=mats.map(m=>`<div class="inv"><label for="${prefix}Inv_${m.key}">${m.name}</label><input id="${prefix}Inv_${m.key}" type="number" min="0" step="1" placeholder="0" inputmode="numeric"></div>`).join("")}
+setupInventory("nest",NEST_MATERIALS);setupInventory("inc",INC_MATERIALS);
+$("incStats").innerHTML=INC_STATS.map(r=>`<tr><td>Lv${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join("");
+let active="nest";
+function switchTab(which){active=which;const isNest=which==="nest";$("tabNest").setAttribute("aria-selected",String(isNest));$("tabIncubator").setAttribute("aria-selected",String(!isNest));$("nestPanel").classList.toggle("hidden",!isNest);$("incubatorPanel").classList.toggle("hidden",isNest)}
+$("tabNest").onclick=()=>switchTab("nest");$("tabIncubator").onclick=()=>switchTab("inc");
+function calculate(prefix,mats,costs,max){
+ const current=Number($(prefix+"Current").value),target=Number($(prefix+"Target").value),count=Math.max(1,Math.min(100,Math.floor(Number($(prefix+"Count").value)||1)));
+ $(prefix+"Count").value=count;
+ const resultEl=$(prefix+"Results"),summary=$(prefix+"Summary"),warnings=$(prefix+"Warnings"),tbody=$(prefix+"Table").querySelector("tbody");
+ if(target<current){resultEl.hidden=false;summary.textContent="目標レベルは現在のレベル以上に設定してください。";warnings.innerHTML="";tbody.innerHTML="";return null}
+ let unknown=[];
+ for(let lv=current+1;lv<=target;lv++)if(!(lv in costs)||costs[lv]===null)unknown.push(lv);
+ const rows=mats.map(m=>{let per=0;for(let lv=current+1;lv<=target;lv++){const c=costs[lv];if(c&&Number.isFinite(c[m.key]))per+=c[m.key]}
+  const total=per*count,owned=Math.max(0,Math.floor(Number($(prefix+"Inv_"+m.key).value)||0));
+  return {...m,total,owned,shortage:Math.max(0,total-owned),remaining:Math.max(0,owned-total)}
+ }).filter(x=>x.total>0||x.owned>0);
+ summary.textContent=`${prefix==="nest"?"巣":"インキュベーター"} ${count}個：Lv${current} → Lv${target}（${target-current}段階分）`;
+ warnings.innerHTML=unknown.length?`<p class="warning">Lv${unknown.join("・Lv")}の必要素材が未確認。表示される必要数は確認済み素材の小計で、実際の総必要数・不足数・残り素材とは異なる可能性がある。</p>`:"";
+ tbody.innerHTML=rows.map(x=>{const enough=x.shortage===0;const shortage=enough?`<td class="enough-cell"><strong>0</strong><span class="status-word enough">充足</span></td>`:`<td class="shortage-cell"><strong>${fmt(x.shortage)}</strong><span class="status-word short">不足</span></td>`;const remaining=enough?`<td class="remaining-cell ${x.remaining===0?"zero":""}">${fmt(x.remaining)}</td>`:`<td class="remaining-cell">—</td>`;return `<tr><td>${x.name}</td><td>${fmt(x.total)}${unknown.length?"*":""}</td><td>${fmt(x.owned)}</td>${shortage}${remaining}</tr>`}).join("");
+ resultEl.hidden=false;return {prefix,current,target,count,rows,unknown};
+}
+function outputText(r){return [`${r.prefix==="nest"?"巣":"インキュベーター"}の強化コスト`,`個数：${r.count}`,`強化：Lv${r.current} → Lv${r.target}`,r.unknown.length?`注意：Lv${r.unknown.join("・Lv")}の必要素材未確認。必要数は小計。`:"","素材\t合計必要数\t所持数\t不足数\t強化後の残り",...r.rows.map(x=>`${x.name}\t${x.total}${r.unknown.length?"*":""}\t${x.owned}\t${x.shortage}\t${x.shortage?"—":x.remaining}`)].filter(Boolean).join("\n")}
+function outputWiki(r){return ["|CENTER:|CENTER:|CENTER:|CENTER:|CENTER:|c","|素材|合計必要数|所持数|不足数|強化後の残り|h",...r.rows.map(x=>`|${x.name}|${x.total}${r.unknown.length?"*":""}|${x.owned}|${x.shortage}|${x.shortage?"—":x.remaining}|`),...(r.unknown.length?["|>|>|>|>|※ Lv"+r.unknown.join("・Lv")+"の必要素材未確認。必要数は小計。|"]:[])].join("\n")}
+async function copyText(prefix,value){try{await navigator.clipboard.writeText(value);$(prefix+"CopyStatus").textContent="コピーしました。"}catch(e){$(prefix+"CopyStatus").textContent="自動コピーできませんでした。表示されたテキストを選択してコピーしてください。";let old=$(prefix+"CopyStatus").nextElementSibling;if(old&&old.tagName==="TEXTAREA")old.remove();const ta=document.createElement("textarea");ta.value=value;ta.style.width="100%";ta.rows=8;$(prefix+"CopyStatus").after(ta);ta.focus();ta.select()}}
+function bind(prefix,mats,costs,max){$(prefix+"Calc").onclick=()=>calculate(prefix,mats,costs,max);$(prefix+"Reset").onclick=()=>{ $(prefix+"Current").value="1";$(prefix+"Target").value=String(max);$(prefix+"Count").value="1";mats.forEach(m=>$(prefix+"Inv_"+m.key).value="");$(prefix+"Results").hidden=true;$(prefix+"CopyStatus").textContent="";save()};$(prefix+"CopyText").onclick=()=>{const r=calculate(prefix,mats,costs,max);if(r)copyText(prefix,outputText(r))};$(prefix+"CopyWiki").onclick=()=>{const r=calculate(prefix,mats,costs,max);if(r)copyText(prefix,outputWiki(r))}}
+bind("nest",NEST_MATERIALS,NEST_COSTS,13);bind("inc",INC_MATERIALS,INC_COSTS,14);
+function save(){try{const data={active,targets:{},counts:{},inventory:{}};for(const p of ["nest","inc"]){data.targets[p]=[$(p+"Current").value,$(p+"Target").value];data.counts[p]=$(p+"Count").value;data.inventory[p]={};const mats=p==="nest"?NEST_MATERIALS:INC_MATERIALS;mats.forEach(m=>data.inventory[p][m.key]=$(p+"Inv_"+m.key).value)}localStorage.setItem("dinomutant-cost-calculator-v3",JSON.stringify(data))}catch(e){}}
+try{const d=JSON.parse(localStorage.getItem("dinomutant-cost-calculator-v3")||"null");if(d){for(const p of ["nest","inc"]){if(d.targets&&d.targets[p]){$(p+"Current").value=d.targets[p][0];$(p+"Target").value=d.targets[p][1]}if(d.counts&&d.counts[p])$(p+"Count").value=d.counts[p];const mats=p==="nest"?NEST_MATERIALS:INC_MATERIALS;if(d.inventory&&d.inventory[p])mats.forEach(m=>{if(d.inventory[p][m.key]!=null)$(p+"Inv_"+m.key).value=d.inventory[p][m.key]})}if(d.active==="inc")switchTab("inc")}}catch(e){}
+document.addEventListener("input",save);document.addEventListener("change",save);
+</script>
+</body>
+</html>
